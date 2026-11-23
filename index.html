@@ -8,8 +8,6 @@
 <style>
 :root{--ink:#ffb48a;--hot:#ff5a48}
 html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:'Courier New',ui-monospace,monospace;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
-#bar{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;height:30px;background:#cfe0f0;color:#23364a;font:13px system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between;padding:0 12px;z-index:10}
-#bar i{font-style:normal;letter-spacing:12px;opacity:.7;cursor:pointer}
 #st{position:fixed;top:calc(env(safe-area-inset-top,0px) + 44px);left:0;right:0;text-align:center;color:var(--ink);font-size:clamp(16px,4.6vw,22px);min-height:1.4em;z-index:6;transition:opacity 1s}
 #st::after{content:'_';animation:bl 1s steps(1) infinite}
 @keyframes bl{50%{opacity:0}}
