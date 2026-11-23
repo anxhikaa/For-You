@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>for you</title>
+<style>
+:root{--ink:#ffb48a;--hot:#ff5a48}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:'Courier New',ui-monospace,monospace;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+#bar{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;height:30px;background:#cfe0f0;color:#23364a;font:13px system-ui,sans-serif;display:flex;align-items:center;justify-content:space-between;padding:0 12px;z-index:10}
+#bar i{font-style:normal;letter-spacing:12px;opacity:.7;cursor:pointer}
+#st{position:fixed;top:calc(env(safe-area-inset-top,0px) + 44px);left:0;right:0;text-align:center;color:var(--ink);font-size:clamp(16px,4.6vw,22px);min-height:1.4em;z-index:6;transition:opacity 1s}
+#st::after{content:'_';animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+#c{position:fixed;inset:0;width:100%;height:100%}
+#fin{position:fixed;left:50%;top:45%;transform:translate(-50%,-50%);width:min(94vw,480px);height:min(56vh,340px);opacity:0;transition:opacity 2.5s;pointer-events:none;z-index:4}
+#fin.on{opacity:1}
+.h{position:absolute;color:var(--hot);font-size:clamp(14px,4vw,22px);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.25)}}
+.r{position:fixed;bottom:-30px;color:var(--hot);animation:rise linear forwards;pointer-events:none;z-index:3;opacity:.8}
+@keyframes rise{to{transform:translateY(-115vh)}}
+
+/* Midnight Lock Overlay */
+#lock{position:fixed;inset:0;background:radial-gradient(circle at center,#120406 0%,#000 75%);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;z-index:8;transition:opacity 1.2s ease,visibility 1.2s ease}
+#lock.hide{opacity:0;visibility:hidden;pointer-events:none}
+#heart-ascii{color:var(--hot);font-size:clamp(11px,3.2vw,15px);line-height:1.15;margin-bottom:22px;text-shadow:0 0 12px rgba(255,90,72,.55);animation:pulse 2.2s ease-in-out infinite}
+#lock-msg{color:var(--ink);font-size:clamp(15px,4.2vw,20px);margin-bottom:14px;letter-spacing:.5px}
+#timer{color:#ffe6b8;font-size:clamp(32px,9vw,54px);font-weight:bold;letter-spacing:3px;text-shadow:0 0 18px rgba(255,140,90,.45);margin-bottom:16px}
+#lock-sub{color:rgba(255,180,138,.55);font-size:clamp(12px,3.4vw,14px)}
+</style>
+</head>
+<body>
+<!-- Retro window bar (double-tap -□× to preview immediately before midnight) -->
+<div id="bar"><span>for you</span><i id="win-ctrl">-□×</i></div>
+
+<!-- Countdown Lock Screen (permanently unlocks Nov 24, 2026 at 12:00:00 AM) -->
+<div id="lock">
+<pre id="heart-ascii">  .:::.   .:::.
+ :::::::.:::::::
+ :::::::::::::::
+ ':::::::::::::'
+   ':::::::::'
+     ':::::'
+       ':'</pre>
+<div id="lock-msg">&gt; unlocks at midnight...</div>
+<div id="timer">00:00:00</div>
+<div id="lock-sub">come back when the clock hits 12:00 ♥</div>
+</div>
+
+<!-- Typewriter status, ASCII/Particle Canvas, and Floating Heart Ring -->
+<div id="st"></div>
+<canvas id="c"></canvas>
+<div id="fin"></div>
+
+<script>
+// Grid resolution and responsive canvas setup
+var COLS=72,ROWS=55,cv=document.getElementById('c'),cx=cv.getContext('2d'),W,H,dpr=window.devicePixelRatio||1,tw,th,tx,ty,cw,ch;
+var oc=document.createElement('canvas');oc.width=COLS;oc.height=ROWS;var ox=oc.getContext('2d',{willReadFrequently:true});
+
+function rs(){
+  W=innerWidth;H=innerHeight;
+  cv.width=W*dpr;cv.height=H*dpr;
+  cx.setTransform(dpr,0,0,dpr,0,0);
+  tw=Math.min(W*.98,460,(H-170)*300/460);
+  th=tw*460/300;
+  tx=(W-tw)/2;
+  ty=84+(H-170-th)/2;
+  cw=tw/COLS;
+  ch=th/ROWS;
+}
+rs();addEventListener('resize',rs);
+
+function rnd(a,b){return a+Math.random()*(b-a)}
+function hs(n){return ((n*2654435761)>>>0)%1000/1000}
+
+// Vector shapes for petals, bud, stem, leaves, and calyx
+var PD=new Path2D("M0 0 C-46 -8 -62 -56 -46 -92 C-34 -112 -12 -112 0 -100 C12 -112 34 -112 46 -92 C62 -56 46 -8 0 0Z");
+var BD=new Path2D("M-28 0 C-38 -50 -22 -86 0 -92 C22 -86 38 -50 28 0Z");
+var SW=new Path2D("M-16 -62 C-6 -76 16 -74 18 -60 C20 -46 -2 -44 -8 -56 C-10 -64 2 -66 6 -60");
+var VD=new Path2D("M0 -8 C-4 -40 -4 -70 0 -96");
+var L1=new Path2D("M150 440 C100 420 70 360 66 290 C108 320 140 380 150 440Z"),
+    L2=new Path2D("M150 410 C196 390 232 330 238 262 C192 292 158 350 150 410Z"),
+    CA=new Path2D("M150 222 C112 214 106 194 122 186 L150 200 L178 186 C194 194 188 214 150 222Z");
+
+// Color palettes, petal layer order, and ASCII brightness ramp
+var G=[['#ff7a6a','#d81e2e','#6a0612'],['#e8483f','#b01428','#4a0410'],['#b01c2a','#6a0a16','#2a0208'],['#ff9a8a','#e8303a','#8a0c1c']];
+var Z=[{a:-62,s:1,f:2,k:0},{a:62,s:1,f:2,k:1},{a:-32,s:.95,f:1,k:2},{a:32,s:.95,f:1,k:3},{a:0,s:1,f:0,k:6,bud:1},{a:-14,s:.78,f:3,k:4},{a:14,s:.78,f:3,k:5}];
+var RAMP=['.','·',':','+','(','o','*','8','0','#','@'];
+var tf=1,fading=false,unlocked=false;
+
+// Gentle sway transformation
+function base(now){
+  ox.setTransform(COLS/300,0,0,ROWS/460,0,0);
+  ox.translate(150,450);
+  ox.rotate(Math.sin(now/800)*.026);
+  ox.translate(-150,-450);
+}
+
+// Rasterize vector rose onto offscreen grid and map pixels to ASCII characters
+function tulip(now){
+  ox.setTransform(1,0,0,1,0,0);
+  ox.clearRect(0,0,COLS,ROWS);
+  base(now);
+  ox.strokeStyle='#8aa83e';ox.lineWidth=9;ox.lineCap='round';
+  ox.beginPath();ox.moveTo(150,215);ox.bezierCurveTo(146,300,156,380,150,458);ox.stroke();
+  ox.fillStyle='#6f9034';ox.fill(L1);
+  ox.fillStyle='#86a83e';ox.fill(L2);
+  ox.fillStyle='#7a9a38';ox.fill(CA);
+
+  Z.forEach(function(p){
+    var fl=p.fall,pr=0,fx=0,fy=0,fr=0,al=1;
+    if(fl){pr=(now-fl.t)/1600;if(pr>=1){p.dead=1;return}fx=fl.dx*pr;fy=300*pr*pr;fr=fl.r*pr;al=1-pr*pr}
+    if(p.pop){pr=(now-p.pop)/500;if(pr>=1){p.dead=1;return}al=1-pr}
+    if(p.dead)return;
+    base(now);
+    ox.translate(150+fx,205+fy);
+    ox.rotate((p.a+fr)*Math.PI/180);
+    ox.scale(p.s,p.s);
+    ox.globalAlpha=al;
+    var c=G[p.f],g=ox.createLinearGradient(0,-110,0,0);
+    g.addColorStop(0,c[0]);g.addColorStop(.5,c[1]);g.addColorStop(1,c[2]);
+    ox.fillStyle=g;
+    ox.fill(p.bud?BD:PD);
+    ox.strokeStyle='rgba(255,225,200,.6)';
+    ox.lineWidth=2.5;
+    ox.stroke(p.bud?SW:VD);
+    ox.globalAlpha=1;
+  });
+
+  var d=ox.getImageData(0,0,COLS,ROWS).data;
+  cx.font=Math.round(ch*.95)+'px "Courier New",monospace';
+  cx.textAlign='center';cx.textBaseline='middle';
+  cx.globalAlpha=tf;
+  var st=Math.floor(now/260);
+  for(var i=0;i<COLS*ROWS;i++){
+    var a=d[i*4+3];if(a<70)continue;
+    var r=d[i*4],g2=d[i*4+1],b=d[i*4+2];
+    var br=Math.max(r,g2,b)/255*(.55+a/570)+(hs(i)-.5)*.28;
+    var idx=Math.max(0,Math.min(RAMP.length-1,Math.floor(br*RAMP.length)));
+    var chr=RAMP[idx],col='rgb('+r+','+g2+','+b+')';
+    if(hs(i*7+st)<.03){chr='*';col='#ffe6b8'}
+    cx.fillStyle=col;
+    cx.fillText(chr,tx+(i%COLS+.5)*cw,ty+(Math.floor(i/COLS)+.5)*ch);
+  }
+  cx.globalAlpha=1;
+}
+
+// Background dust, sparks, morphing text particles, and fireworks
+var dust=[];for(var q=0;q<45;q++)dust.push({x:rnd(0,1),y:rnd(0,1),vy:rnd(.0001,.0004),s:rnd(8,13)});
+var P=[],T=[],R=[],tick=0,last=0;
+
+function burst(x,y,n,hue,sp){
+  for(var i=0;i<n;i++){
+    var a=rnd(0,6.283),v=rnd(.4,1)*sp;
+    P.push({x:x,y:y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:0,m:rnd(40,80),c:hue+rnd(-12,12)});
+  }
+}
+
+// Main render loop
+function loop(now){
+  requestAnimationFrame(loop);
+  if(now-last<33)return;
+  last=now;tick++;
+  cx.clearRect(0,0,W,H);
+  cx.textAlign='center';cx.textBaseline='middle';
+  cx.font='12px monospace';cx.fillStyle='rgba(255,150,100,.35)';
+  dust.forEach(function(d){
+    d.y-=d.vy*33;if(d.y<0)d.y=1;
+    cx.fillText('·',d.x*W,d.y*H);
+  });
+
+  if(!unlocked)return;
+
+  if(fading&&tf>0)tf=Math.max(0,tf-.02);
+  if(tf>0)tulip(now);
+
+  cx.font='13px monospace';
+  for(var i=P.length-1;i>=0;i--){
+    var p=P[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.985;p.vy=p.vy*.985+.07;p.l++;
+    if(p.l>p.m){P.splice(i,1);continue}
+    var f=p.l/p.m;
+    cx.fillStyle='hsla('+p.c+',100%,62%,'+(1-f)*0.75+')';
+    cx.fillText(f<.35?'*':f<.7?'+':'·',p.x,p.y);
+  }
+
+  for(var j=R.length-1;j>=0;j--){
+    var r=R[j];r.y-=11;cx.fillStyle='#ffe0a0';cx.fillText('|',r.x,r.y);
+    if(r.y<=r.ty){
+      burst(r.x,r.y,65,r.c,rnd(3.2,5.0));
+      burst(r.x,r.y,18,40,2.0);
+      R.splice(j,1);
+    }
+  }
+
+  cx.font='bold 12px monospace';
+  for(var k=0;k<T.length;k++){
+    var t=T[k];if(t.d>0){t.d--;continue}
+    t.x+=(t.tx-t.x)*.08;t.y+=(t.ty-t.y)*.08;
+    cx.fillStyle='hsla('+t.c+',100%,'+(t.l||68)+'%,'+(.72+.28*Math.sin(tick*.2+k))+')';
+    cx.fillText(k%4?'•':'*',t.x,t.y);
+  }
+}
+requestAnimationFrame(loop);
+
+// Typewriter prompt helper
+var st=document.getElementById('st'),tm,n=0,busy=false;
+function say(t){
+  clearInterval(tm);var i=0;
+  tm=setInterval(function(){
+    st.textContent='> '+t.slice(0,++i);
+    if(i>=t.length)clearInterval(tm);
+  },45);
+}
+
+// Unlock transition
+function unlockSite(){
+  if(unlocked)return;
+  unlocked=true;
+  document.getElementById('lock').classList.add('hide');
+  setTimeout(function(){
+    say('hey you.');
+    setTimeout(function(){if(!n)say('tap anywhere')},2200);
+  },400);
+}
+
+// Permanent unlock timestamp: November 24, 2026 at 12:00:00 AM local time (month 10 = Nov)
+var targetMidnight=new Date(2026,10,24,0,0,0,0).getTime();
+
+function pad(v){return v<10?'0'+v:v}
+function checkCountdown(){
+  if(unlocked)return;
+  var diff=targetMidnight-Date.now();
+  if(diff<=0){
+    document.getElementById('timer').textContent='00:00:00';
+    unlockSite();
+    return;
+  }
+  var hrs=Math.floor(diff/3600000);
+  var mins=Math.floor((diff%3600000)/60000);
+  var secs=Math.floor((diff%60000)/1000);
+  document.getElementById('timer').textContent=pad(hrs)+':'+pad(mins)+':'+pad(secs);
+}
+checkCountdown();
+setInterval(checkCountdown,250);
+
+// Secret double-tap/double-click on "-□×" in top bar to bypass lock during testing
+document.getElementById('win-ctrl').addEventListener('dblclick',function(e){
+  e.stopPropagation();
+  unlockSite();
+});
+
+function lx(x){return tx+x/300*tw}
+function ly(y){return ty+y/460*th}
+
+// Tap interaction to pluck petals one by one
+document.addEventListener('pointerdown',function(){
+  if(!unlocked||busy||n>=7)return;
+  busy=true;setTimeout(function(){busy=false},500);
+  var s=n%2?1:-1;
+  if(n<6){
+    var p=Z.filter(function(z){return z.k==n})[0];
+    p.fall={t:performance.now(),dx:s*rnd(40,90),r:s*rnd(40,110)};
+    burst(lx(150+s*40),ly(120),14,15,2.4);
+    say(n%2?'she loves me not':'she loves me');
+    n++;
+  } else {
+    n++;
+    say('she loves me ♥');
+    finale();
+  }
+});
+
+// Finale sequence: morph into "i love you", launch upper-sky fireworks, and form anniversary text
+function finale(){
+  Z[4].pop=performance.now();
+  var fs=Math.min(W*.115,50),o=document.createElement('canvas');
+  o.width=W;o.height=Math.ceil(fs*1.4);
+  var x2=o.getContext('2d');
+  x2.font='bold '+fs+'px "Courier New",monospace';
+  x2.textAlign='center';x2.fillStyle='#fff';
+  x2.fillText('i love you',W/2,fs*1.05);
+
+  var d=x2.getImageData(0,0,o.width,o.height).data,top=H-o.height-50,cxp=lx(150),cyp=ly(130);
+  for(var y=0;y<o.height;y+=3){
+    for(var x=0;x<W;x+=3){
+      if(d[(y*o.width+x)*4+3]>128)T.push({x:cxp,y:cyp,tx:x,ty:top+y,d:Math.floor(rnd(0,50)),c:rnd(5,40),l:68});
+    }
+  }
+  burst(cxp,cyp,80,15,5);
+
+  setTimeout(function(){fading=true},1200);
+  setTimeout(function(){st.style.opacity=0},3200);
+  setTimeout(function(){
+    setInterval(function(){R.push({x:rnd(.12,.88)*W,y:H,ty:rnd(.08,.24)*H,c:rnd(0,50)})},580);
+    R.push({x:W*.5,y:H,ty:H*.18,c:15});
+  },3400);
+  setTimeout(function(){
+    msg();
+    document.getElementById('fin').classList.add('on');
+    ring();
+    setInterval(rise,500);
+  },4300);
+}
+
+// High-density particle text for "happy two month anniversary, my heart ♥"
+function msg(){
+  var f2=Math.min(W*.098,42),ln=['happy two month','anniversary,','my heart ♥'],o=document.createElement('canvas');
+  o.width=W;o.height=Math.ceil(f2*4.4);
+  var x2=o.getContext('2d');
+  x2.font='bold '+f2+'px "Courier New",monospace';
+  x2.textAlign='center';x2.fillStyle='#fff';
+  ln.forEach(function(s,i){x2.fillText(s,W/2,f2*(1.2+i*1.38))});
+
+  var d=x2.getImageData(0,0,o.width,o.height).data,top=H*.45-o.height/2;
+  burst(W/2,H*.45,55,20,4.5);
+  for(var y=0;y<o.height;y+=2.5){
+    for(var x=0;x<W;x+=2.5){
+      var px=Math.floor(x),py=Math.floor(y);
+      if(d[(py*o.width+px)*4+3]>110)T.push({x:W/2,y:H*.45,tx:x,ty:top+y,d:Math.floor(rnd(0,45)),c:rnd(8,38),l:74});
+    }
+  }
+}
+
+// Pulsing heart ring around the center message
+function ring(){
+  var f=document.getElementById('fin'),e=['♥','·','*','♥','+'];
+  for(var i=0;i<18;i++){
+    var a=i/18*6.283,s=document.createElement('span');
+    s.className='h';s.textContent=e[i%5];
+    s.style.left=(50+Math.cos(a)*47-2)+'%';
+    s.style.top=(50+Math.sin(a)*46-4)+'%';
+    s.style.animationDelay=(i*.13)+'s';
+    f.appendChild(s);
+  }
+}
+
+// Floating hearts rising from the bottom
+function rise(){
+  var s=document.createElement('div');
+  s.className='r';s.textContent=Math.random()<.6?'♥':'*';
+  s.style.left=rnd(2,95)+'vw';
+  s.style.fontSize=rnd(12,24)+'px';
+  s.style.animationDuration=rnd(6,10)+'s';
+  document.body.appendChild(s);
+  setTimeout(function(){s.remove()},10500);
+}
+</script>
+</body>
+</html>
